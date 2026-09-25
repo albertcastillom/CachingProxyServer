@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: caching-proxy-server
+Version: 0.1.0
+Summary: A Redis-backed caching HTTP proxy
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: redis<9,>=8.1
+
+# CachingProxyServer

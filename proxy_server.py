@@ -19,17 +19,21 @@ def parse_arguments():
     parser.add_argument('--origin', type=str, default='http://localhost:8001', help='Origin server URL')
     parser.add_argument('--port', type=int, default=8080, help='Port to run the proxy server on')
     parser.add_argument('--clear-cache', action='store_true', help='Clear all cached responses in Redis and exit')
+    parser.add_argument('--ttl', type=int, default=60, help='Time-to-live (TTL) for cached responses in seconds')
     return parser.parse_args()
 
 
 #clear cache function to clear all cached responses in Redis
 def clear_cache():
-    keys = list(redis_client.scan_iter(match='caching-proxy:*'))
-    if not keys:
-        print('No cached responses found in Redis.')
-        return
-    deleted_count = redis_client.delete(*keys)
-    print(f'Cleared {deleted_count} cached responses from Redis.')
+    try:
+        keys = list(redis_client.scan_iter(match='caching-proxy:*'))
+        if not keys:
+            print('No cached responses found in Redis.')
+            return
+        deleted_count = redis_client.delete(*keys)
+        print(f'Cleared {deleted_count} cached responses from Redis.')
+    except redis.RedisError as e:
+        print(f'Error clearing cache in Redis: {e}!!!')
 
 #skip origin server headers that are not relevant to the client
 SKIPPED_RESPONSE_HEADERS = {
@@ -74,16 +78,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
         target_url = self.server.origin + incoming_path
         cache_key = f"caching-proxy:{self.server.origin}:GET:{incoming_path}"
 
-        cached_response = redis_client.hgetall(cache_key)
-        if cached_response:
-            print(f'X-Cache: Hit for {cache_key}')
-            self.send_proxy_response(
-                int(cached_response[b'status']),
-                json.loads(cached_response[b'headers'].decode()),
-                cached_response[b'body'],
-                "HIT"
-            )
-            return
+        try:
+            cached_response = redis_client.hgetall(cache_key)
+            if cached_response:
+                print(f'X-Cache: Hit for {cache_key}')
+                self.send_proxy_response(
+                    int(cached_response[b'status']),
+                    json.loads(cached_response[b'headers'].decode()),
+                    cached_response[b'body'],
+                    "HIT"
+                )
+                return
+        except redis.RedisError as e:
+            print(f'Error accessing Redis cache: {e}!!!')
+            # Continue to fetch from origin server if cache access fails
 
         try:
             origin_response = urlopen(target_url, timeout=10)
@@ -114,15 +122,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if status == 200:
                 print(f'Caching response for {cache_key}')
 
-                redis_client.hset(
-                    cache_key,
-                    mapping={
-                        'status': str(status),
-                        'headers': json.dumps(headers),
-                        'body': body,
-                    },
-                )
-                redis_client.expire(cache_key, 60)  # Set expiration time to 60 seconds
+                try:
+                    with redis_client.pipeline(transaction=True) as pipe:
+                        pipe.hset(
+                            cache_key,
+                            mapping={
+                                'status': str(status),
+                                'headers': json.dumps(headers),
+                                'body': body,
+                            },
+                        )
+                        pipe.expire(cache_key, self.server.cache_ttl)  # Set expiration time to 60 seconds
+                        pipe.execute()
+                        print(f'Successfully cached response for {cache_key}')
+                except redis.RedisError as e:
+                    print(f'Error caching response in Redis: {e}!!!')
 
         print (f'X-Cache: Miss for {cache_key}')
         self.send_proxy_response(status, headers, body, "MISS")
@@ -142,6 +156,7 @@ def main():
 
     #normalize the origin URL to ensure it doesn't end with a slash
     server.origin = arguments.origin.rstrip('/')
+    server.cache_ttl = arguments.ttl
 
     print(f'Starting proxy server on http://localhost:{arguments.port}...')
 

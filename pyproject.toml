@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caching-proxy-server"
+version = "0.1.0"
+description = "A Redis-backed caching HTTP proxy"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "redis>=8.1,<9",
+]
+
+[project.scripts]
+caching-proxy = "proxy_server:main"
+
+[tool.setuptools]
+py-modules = ["proxy_server"]

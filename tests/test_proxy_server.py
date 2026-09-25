@@ -32,7 +32,7 @@ class ProxyCacheTests(unittest.TestCase):
         self.assertEqual(second_cache_status, "HIT")
 
         self.assertEqual(first_body, second_body)  # Ensure the response body is the same for both requests
-    @unittest.skip("Skipping cache expiration test due to timing issues.")
+    
     def test_cache_expiration(self):
         with urlopen(f'{PROXY_URL}/message.txt') as response:
             first_status = response.status
@@ -44,7 +44,7 @@ class ProxyCacheTests(unittest.TestCase):
 
         # Wait for the cache to expire (assuming the expiration time is set to 60 seconds)
         import time
-        time.sleep(65)  # Wait for 65 seconds to ensure the cache has expired
+        time.sleep(3)  # Wait for 65 seconds to ensure the cache has expired
 
         with urlopen(f'{PROXY_URL}/message.txt') as response:
             second_status = response.status
@@ -129,6 +129,7 @@ class ProxyCacheTests(unittest.TestCase):
         )
 
         test_proxy.origin = "http://unreachable-origin.test"
+        test_proxy.cache_ttl = 1  # Set a cache TTL for testing
 
         proxy_thread = threading.Thread(target=test_proxy.serve_forever, daemon=True)
         proxy_thread.start()

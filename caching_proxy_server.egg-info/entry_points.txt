@@ -1,0 +1,2 @@
+[console_scripts]
+caching-proxy = proxy_server:main
