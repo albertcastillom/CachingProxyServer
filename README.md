@@ -1,8 +1,8 @@
 # Caching Proxy Server
 
-A small Redis-backed HTTP caching proxy written in Python. The project forwards
-GET requests to an origin server, stores successful responses in Redis, and
-serves repeated requests from the cache until their time-to-live (TTL) expires.
+A small Redis-backed HTTP caching proxy written in Python. The project caches
+successful GET responses and forwards POST, PUT, and DELETE requests without
+caching them.
 
 This project was built as a learning exercise based on the roadmap.sh caching
 proxy project.
@@ -33,7 +33,10 @@ Responses include one of these headers:
 ```http
 X-Cache: MISS
 X-Cache: HIT
+X-Cache: BYPASS
 ```
+
+`BYPASS` is used for non-cacheable methods and when Redis is unavailable.
 
 ## Requirements
 
@@ -110,6 +113,7 @@ The available arguments are:
 | `--origin`      | `http://localhost:8001` | Server to which requests are forwarded   |
 | `--ttl`         | `60`                    | Cache lifetime in seconds                |
 | `--clear-cache` | disabled                | Clear the proxy's Redis entries and exit |
+| `--log-level`   | `INFO`                  | Logging verbosity                        |
 
 You can also run the module without installing the CLI command:
 
@@ -151,6 +155,10 @@ these URLs are cached separately:
 /message.txt?version=1
 /message.txt?version=2
 ```
+
+POST, PUT, and DELETE requests are forwarded with their body and end-to-end
+headers, but are never cached. A successful mutation invalidates the cached GET
+response for the same path. Their responses include `X-Cache: BYPASS`.
 
 ## Clearing the cache
 
@@ -209,12 +217,13 @@ The suite covers:
   are not cached.
 - An unreachable origin produces `502 Bad Gateway`.
 - If Redis cannot be read or written, the proxy logs the cache error and still
-  attempts to return the origin response.
+  attempts to return the origin response with `X-Cache: BYPASS`.
 
 ## Current limitations
 
-- Only GET requests are implemented.
 - Only `200 OK` responses are cached.
+- POST, PUT, and DELETE invalidation removes only the exact matching GET path;
+  it does not invalidate related collection or query-string entries.
 - Redis connection settings are currently fixed to `localhost:6379`, database 0.
 - Responses are loaded fully into memory before being returned.
 - Advanced HTTP caching directives such as `Cache-Control`, `Vary`, and
